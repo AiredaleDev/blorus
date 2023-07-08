@@ -101,13 +101,22 @@ impl GameState {
 
         for (dr, r) in player.piece_buffer.iter().enumerate() {
             for dc in r.iter_ones() {
-                // Sometimes I wish I could have signed indices.
-                // This really distracts for what I'm trying to do: row + dr + offset (offset likely < 0)
+                // Sometimes I wish Rust allowed signed indices.
                 let r_ind = (row + dr as isize) as usize;
                 let c_ind = (col + dc as isize) as usize;
                 self.board[r_ind][c_ind] = player.color;
             }
         }
+    }
+
+    /// Update the current player's piece buffer based on the result of `f`.
+    /// `f` must accept a [`piece::Shape`] and return a [`piece::Shape`].
+    pub fn alter_current_piece_buffer(&mut self, f: impl Fn(piece::Shape) -> piece::Shape) {
+        // lambda-brained update semantics xd --
+        // TODO: Maybe remove, this is kinda silly.
+        // Also, no idea how it will perform
+        self.players[self.current_player].piece_buffer =
+            f(self.players[self.current_player].piece_buffer);
     }
 }
 
@@ -136,14 +145,14 @@ async fn main() {
     loop {
         clear_background(BEIGE);
 
-        let tile_size = screen_height() * 0.0225;
+        let tile_size = screen_height() * 0.045 * BOARD_SIZE;
         let (board_left_x, board_top_y) = (
             screen_width() * BOARD_SIZE - screen_height() * BOARD_HORIZ_OFFSET,
             screen_height() * BOARD_VERT_OFFSET,
         );
         let (play_area_left_x, play_area_top_y) = (
-            board_left_x + screen_height() * 0.025,
-            board_top_y + screen_height() * 0.025,
+            board_left_x + screen_height() * 0.05 * BOARD_SIZE,
+            board_top_y + screen_height() * 0.05 * BOARD_SIZE,
         );
 
         // Board
@@ -222,6 +231,34 @@ async fn main() {
             20. * tile_size,
             20. * tile_size,
         );
+
+        // Flip pieces
+        if [KeyCode::A, KeyCode::D, KeyCode::Left, KeyCode::Right]
+            .into_iter()
+            .any(is_key_pressed)
+        {
+            use piece::FlipDir;
+            game_state.alter_current_piece_buffer(|p| piece::flip(p, FlipDir::Horizontal));
+        }
+
+        if [KeyCode::W, KeyCode::S, KeyCode::Up, KeyCode::Down]
+            .into_iter()
+            .any(is_key_pressed)
+        {
+            use piece::FlipDir;
+            game_state.alter_current_piece_buffer(|p| piece::flip(p, FlipDir::Vertical));
+        }
+
+        // Rotate pieces
+        if is_key_pressed(KeyCode::Q) || is_key_pressed(KeyCode::PageUp) {
+            use piece::RotateDir;
+            game_state.alter_current_piece_buffer(|p| piece::rotate(p, RotateDir::Left));
+        }
+
+        if is_key_pressed(KeyCode::E) || is_key_pressed(KeyCode::PageDown) {
+            use piece::RotateDir;
+            game_state.alter_current_piece_buffer(|p| piece::rotate(p, RotateDir::Right));
+        }
 
         // put a piece on the board
         let (mx, my) = mouse_position();
