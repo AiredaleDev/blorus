@@ -90,7 +90,7 @@ pub const PIECE_SHAPES: [Shape; 21] = [
         bitarr![const u8, Lsb0; 0, 0, 1, 0, 0],
         bitarr![const u8, Lsb0; 0, 0, 1, 0, 0],
     ],
-    // L5
+    // L5 - 10
     [
         bitarr![const u8, Lsb0; 0, 0, 1, 0, 0],
         bitarr![const u8, Lsb0; 0, 0, 1, 0, 0],
@@ -98,7 +98,7 @@ pub const PIECE_SHAPES: [Shape; 21] = [
         bitarr![const u8, Lsb0; 0, 0, 1, 1, 0],
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
     ],
-    // EXTENDED ZIG
+    // EXTENDED ZIG - 11
     [
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
         bitarr![const u8, Lsb0; 0, 0, 1, 0, 0],
@@ -106,7 +106,7 @@ pub const PIECE_SHAPES: [Shape; 21] = [
         bitarr![const u8, Lsb0; 0, 0, 1, 1, 0],
         bitarr![const u8, Lsb0; 0, 0, 0, 1, 0],
     ],
-    // EXTENDED TEE
+    // EXTENDED TEE - 12
     [
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
         bitarr![const u8, Lsb0; 0, 0, 1, 0, 0],
@@ -114,7 +114,7 @@ pub const PIECE_SHAPES: [Shape; 21] = [
         bitarr![const u8, Lsb0; 0, 0, 1, 0, 0],
         bitarr![const u8, Lsb0; 0, 0, 1, 0, 0],
     ],
-    // U
+    // U - 13
     [
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
@@ -122,7 +122,7 @@ pub const PIECE_SHAPES: [Shape; 21] = [
         bitarr![const u8, Lsb0; 0, 1, 0, 1, 0],
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
     ],
-    // NOTCH SQUARE
+    // NOTCH SQUARE - 14
     [
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
@@ -130,7 +130,7 @@ pub const PIECE_SHAPES: [Shape; 21] = [
         bitarr![const u8, Lsb0; 0, 1, 1, 0, 0],
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
     ],
-    // BIG TEE
+    // BIG TEE - 15
     [
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
         bitarr![const u8, Lsb0; 0, 1, 0, 0, 0],
@@ -138,7 +138,7 @@ pub const PIECE_SHAPES: [Shape; 21] = [
         bitarr![const u8, Lsb0; 0, 1, 0, 0, 0],
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
     ],
-    // BIG L5
+    // BIG L5 - 16
     [
         bitarr![const u8, Lsb0; 0, 0, 1, 0, 0],
         bitarr![const u8, Lsb0; 0, 0, 1, 0, 0],
@@ -146,7 +146,7 @@ pub const PIECE_SHAPES: [Shape; 21] = [
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
     ],
-    // STAIRS
+    // STAIRS - 17
     [
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
         bitarr![const u8, Lsb0; 0, 1, 1, 0, 0],
@@ -154,7 +154,7 @@ pub const PIECE_SHAPES: [Shape; 21] = [
         bitarr![const u8, Lsb0; 0, 0, 0, 1, 0],
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
     ],
-    // WIDE ZIG
+    // WIDE ZIG - 18
     [
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
         bitarr![const u8, Lsb0; 0, 1, 0, 0, 0],
@@ -162,7 +162,7 @@ pub const PIECE_SHAPES: [Shape; 21] = [
         bitarr![const u8, Lsb0; 0, 0, 0, 1, 0],
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
     ],
-    // CHAIR
+    // CHAIR - 19
     [
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
         bitarr![const u8, Lsb0; 0, 1, 0, 0, 0],
@@ -170,7 +170,7 @@ pub const PIECE_SHAPES: [Shape; 21] = [
         bitarr![const u8, Lsb0; 0, 0, 1, 0, 0],
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
     ],
-    // PLUS
+    // PLUS - 20
     [
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
         bitarr![const u8, Lsb0; 0, 0, 1, 0, 0],
@@ -226,6 +226,43 @@ pub fn flip(shape: Shape, dir: FlipDir) -> Shape {
     new_shape
 }
 
+/// Returns adjusted coordinates if `shape` can be placed at them. Returns `None` otherwise.
+pub fn check_bounds_and_recenter(shape: Shape, row: isize, col: isize) -> Option<(isize, isize)> {
+    // top row, bottom row, left col, right col
+    let mut shape_bounds = [0; 4];
+
+    for (dr, r) in shape.iter().enumerate() {
+        for dc in r.iter_ones() {
+            let dr = dr as isize - 2;
+            let dc = dc as isize - 2;
+            // Only update if we have any 1s in this row. If we don't, do nothing.
+            if dr < shape_bounds[0] {
+                shape_bounds[0] = dr;
+            } else if dr > shape_bounds[1] {
+                shape_bounds[1] = dr;
+            }
+
+            if dc < shape_bounds[2] {
+                shape_bounds[2] = dc;
+            } else if dc > shape_bounds[3] {
+                shape_bounds[3] = dc;
+            }
+        }
+    }
+
+    dbg!(&shape_bounds);
+
+    if row + shape_bounds[0] >= 0
+        && row + shape_bounds[1] < 20
+        && col + shape_bounds[2] >= 0
+        && col + shape_bounds[3] < 20
+    {
+        Some((row - 2, col - 2))
+    } else {
+        None
+    }
+}
+
 // Sure, [[bool; 5]; 5] would have been easier to work with.
 // Do I really see any performance wins with this after all? Who knows at this point lmfao
 fn transpose(shape: Shape) -> Shape {
@@ -268,5 +305,27 @@ mod tests {
         ];
 
         assert_eq!(transpose(line5), line5_t);
+    }
+
+    #[test]
+    fn flip_ok() {
+        let chair = PIECE_SHAPES[19];
+        let chair_fv = [
+            bitarr![u8, Lsb0; 0, 0, 0, 0, 0],
+            bitarr![u8, Lsb0; 0, 0, 1, 0, 0],
+            bitarr![u8, Lsb0; 0, 1, 1, 1, 0],
+            bitarr![u8, Lsb0; 0, 1, 0, 0, 0],
+            bitarr![u8, Lsb0; 0, 0, 0, 0, 0],
+        ];
+        let chair_fh = [
+            bitarr![u8, Lsb0; 0, 0, 0, 0, 0],
+            bitarr![u8, Lsb0; 0, 0, 0, 1, 0],
+            bitarr![u8, Lsb0; 0, 1, 1, 1, 0],
+            bitarr![u8, Lsb0; 0, 0, 1, 0, 0],
+            bitarr![u8, Lsb0; 0, 0, 0, 0, 0],
+        ];
+
+        assert_eq!(flip(chair, FlipDir::Vertical), chair_fv);
+        assert_eq!(flip(chair, FlipDir::Horizontal), chair_fh);
     }
 }

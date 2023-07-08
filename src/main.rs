@@ -1,3 +1,7 @@
+//! Blokus clone written in Rust.
+//!
+//! This is a board game from my childhood. It's also a nice excuse to get comfortable with using async/await semantics over the network.
+
 use bit_set::BitSet;
 use macroquad::prelude::*;
 
@@ -46,66 +50,112 @@ pub struct Player {
     /// Denotes which pieces this player still has available
     remaining_pieces: BitSet<PieceID>,
     /// Piece to place (represented as tile grid instead of ID)
-    current_piece: piece::Shape,
+    piece_buffer: piece::Shape,
 }
 
 impl Player {
+    /// Construct a new player with this color, all pieces in hand,
+    /// and an empty piece buffer.
     pub fn new(color: TileColor) -> Self {
         Self {
             color,
             remaining_pieces: BitSet::from_iter(0..=20),
-            current_piece: piece::EMPTY_SHAPE,
+            piece_buffer: piece::EMPTY_SHAPE,
         }
     }
 }
 
+/// The current game state.
+///
+/// Constructed on lobby creation.
 #[derive(Debug)]
 pub struct GameState {
-    board: [TileColor; 400],
+    /// The current state of the board.
+    board: [[TileColor; 20]; 20],
+    /// Player data.
     players: Vec<Player>,
+    /// Points to player whose turn it is.
+    /// `0 <= current_player <= 3`
     current_player: usize,
 }
 
 impl Default for GameState {
     fn default() -> Self {
         Self {
-            board: [TileColor::default(); 400],
+            board: [[TileColor::default(); 20]; 20],
             players: Vec::with_capacity(4),
             current_player: 0,
         }
     }
 }
 
+impl GameState {
+    pub fn place_piece(&mut self, row: usize, col: usize) {
+        debug_assert!(!self.players.is_empty());
+        let player = &self.players[self.current_player];
+
+        // REFACTOR: Maybe move the offset code into this function.
+        let Some((row, col)) =
+            piece::check_bounds_and_recenter(player.piece_buffer, row as isize, col as isize) else { return; };
+        dbg!(row, col);
+
+        for (dr, r) in player.piece_buffer.iter().enumerate() {
+            for dc in r.iter_ones() {
+                // Sometimes I wish I could have signed indices.
+                // This really distracts for what I'm trying to do: row + dr + offset (offset likely < 0)
+                let r_ind = (row + dr as isize) as usize;
+                let c_ind = (col + dc as isize) as usize;
+                self.board[r_ind][c_ind] = player.color;
+            }
+        }
+    }
+}
+
 #[macroquad::main("Blorus")]
 async fn main() {
+    // Determines where/how large the board should be.
+    // Modify these to move or scale the board as a proportion of the screen.
+    // The board automatically resizes itself with the window.
+    const BOARD_SIZE: f32 = 0.5;
+    const BOARD_HORIZ_OFFSET: f32 = 0.25;
+    const BOARD_VERT_OFFSET: f32 = 0.25;
+
     let mut game_state = GameState::default();
     // test:
-    for i in 0..400 {
-        game_state.board[i] = TileColor::ALL[i % 5];
+    /*
+    for i in 0..20 {
+        for j in 0..20 {
+            game_state.board[i][j] = TileColor::ALL[i % 5];
+        }
     }
+    */
+    game_state.players.push(Player::new(TileColor::Blue));
+    game_state.players[game_state.current_player].piece_buffer = piece::PIECE_SHAPES[10];
 
+    // Main loop
     loop {
         clear_background(BEIGE);
 
+        let tile_size = screen_height() * 0.0225;
         let (board_left_x, board_top_y) = (
-            screen_width() * 0.5 - screen_height() * 0.25,
-            screen_height() * 0.25,
+            screen_width() * BOARD_SIZE - screen_height() * BOARD_HORIZ_OFFSET,
+            screen_height() * BOARD_VERT_OFFSET,
+        );
+        let (play_area_left_x, play_area_top_y) = (
+            board_left_x + screen_height() * 0.025,
+            board_top_y + screen_height() * 0.025,
         );
 
         // Board
         draw_rectangle(
             board_left_x,
             board_top_y,
-            screen_height() * 0.5,
-            screen_height() * 0.5,
+            screen_height() * BOARD_SIZE,
+            screen_height() * BOARD_SIZE,
             GRAY,
         );
 
         // Draw the colorful tiles
-        let tile_size = screen_height() * 0.0225;
-        let play_area_left_x = board_left_x + screen_height() * 0.025;
-        let play_area_top_y = board_top_y + screen_height() * 0.025;
-
         for row in 0..20 {
             for col in 0..20 {
                 draw_rectangle(
@@ -113,7 +163,7 @@ async fn main() {
                     play_area_top_y + row as f32 * tile_size,
                     tile_size,
                     tile_size,
-                    game_state.board[row * 20 + col].into(),
+                    game_state.board[row][col].into(),
                 );
             }
         }
@@ -122,8 +172,8 @@ async fn main() {
         draw_rectangle_lines(
             board_left_x,
             board_top_y,
-            screen_height() * 0.5,
-            screen_height() * 0.5,
+            screen_height() * BOARD_SIZE,
+            screen_height() * BOARD_SIZE,
             4.,
             BLACK,
         );
@@ -132,8 +182,8 @@ async fn main() {
         draw_rectangle_lines(
             play_area_left_x,
             play_area_top_y,
-            screen_height() * 0.45,
-            screen_height() * 0.45,
+            screen_height() * 0.9 * BOARD_SIZE,
+            screen_height() * 0.9 * BOARD_SIZE,
             4.,
             BLACK,
         );
@@ -163,6 +213,25 @@ async fn main() {
                 2.,
                 BLACK,
             );
+        }
+
+        // click detection rect
+        let board_rect = Rect::new(
+            play_area_left_x,
+            play_area_top_y,
+            20. * tile_size,
+            20. * tile_size,
+        );
+
+        // put a piece on the board
+        let (mx, my) = mouse_position();
+        if board_rect.contains(Vec2::new(mx, my)) && is_mouse_button_pressed(MouseButton::Left) {
+            let (col, row) = (
+                ((mx - board_rect.x) / tile_size) as usize,
+                ((my - board_rect.y) / tile_size) as usize,
+            );
+            println!("I put the new forgis on the jeep: ({col}, {row})");
+            game_state.place_piece(row, col);
         }
 
         next_frame().await;
