@@ -9,7 +9,7 @@ pub type Shape = [BitArr!(for ROW_LEN, in u8); 5];
 
 pub const EMPTY_SHAPE: Shape = [bitarr![u8, Lsb0; 0; ROW_LEN]; 5];
 
-pub const PIECE_SHAPES: [Shape; 21] = [
+pub const SHAPES: [Shape; 21] = [
     // DOT - 0
     [
         bitarr![const u8, Lsb0; 0, 0, 0, 0, 0],
@@ -284,7 +284,7 @@ mod tests {
 
     #[test]
     fn tranpose_ok() {
-        let chair = PIECE_SHAPES[19];
+        let chair = SHAPES[19];
         let chair_t = [
             bitarr![u8, Lsb0; 0, 0, 0, 0, 0],
             bitarr![u8, Lsb0; 0, 1, 1, 0, 0],
@@ -295,7 +295,7 @@ mod tests {
 
         assert_eq!(transpose(chair), chair_t);
 
-        let line5 = PIECE_SHAPES[9];
+        let line5 = SHAPES[9];
         let line5_t = [
             bitarr![u8, Lsb0; 0, 0, 0, 0, 0],
             bitarr![u8, Lsb0; 0, 0, 0, 0, 0],
@@ -309,7 +309,7 @@ mod tests {
 
     #[test]
     fn flip_ok() {
-        let chair = PIECE_SHAPES[19];
+        let chair = SHAPES[19];
         let chair_fv = [
             bitarr![u8, Lsb0; 0, 0, 0, 0, 0],
             bitarr![u8, Lsb0; 0, 0, 1, 0, 0],
