@@ -2,231 +2,14 @@
 //!
 //! This is a board game from my childhood. It's also a nice excuse to get comfortable with using async/await semantics over the network.
 
-use bit_set::BitSet;
 use macroquad::prelude::*;
 
 mod debug;
+mod logic;
+mod net;
 mod piece;
 
-pub type PieceID = usize;
-
-/// Denotes possible tile colors. Also used to denote player colors.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TileColor {
-    Red,
-    Yellow,
-    Green,
-    Blue,
-    #[default]
-    Empty,
-    Wall,
-}
-
-impl std::fmt::Display for TileColor {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            Self::Red => "R",
-            Self::Yellow => "Y",
-            Self::Green => "G",
-            Self::Blue => "B",
-            Self::Empty => ".",
-            Self::Wall => "#",
-        };
-        write!(f, "{}", s)
-    }
-}
-
-impl Into<Color> for TileColor {
-    fn into(self) -> Color {
-        match self {
-            TileColor::Red => RED,
-            TileColor::Yellow => YELLOW,
-            TileColor::Green => GREEN,
-            TileColor::Blue => BLUE,
-            TileColor::Empty | TileColor::Wall => BLANK,
-        }
-    }
-}
-
-/// Player data
-#[derive(Debug)]
-pub struct Player {
-    /// Player's color
-    color: TileColor,
-    /// Denotes which pieces this player still has available
-    remaining_pieces: BitSet<PieceID>,
-}
-
-impl Player {
-    /// Construct a new player with this color, all pieces in hand,
-    /// and an empty piece buffer.
-    pub fn new(color: TileColor) -> Self {
-        Self {
-            color,
-            remaining_pieces: BitSet::from_iter(0..=20),
-        }
-    }
-}
-
-/// The current game state.
-///
-/// Constructed on game start.
-#[derive(Debug)]
-pub struct GameState {
-    /// The current state of the board.
-    board: [[TileColor; 22]; 22],
-    /// Player data.
-    players: Vec<Player>,
-    /// Points to player whose turn it is.
-    /// `0 <= current_player <= 3`
-    current_player: usize,
-    /// Denotes the currently selected piece.
-    selected_piece: Option<PieceID>,
-    /// Piece to place (represented as tile grid instead of ID)
-    piece_buffer: piece::Shape,
-}
-
-impl GameState {
-    /// For internal testing only.
-    pub fn new(player_count: usize) -> Self {
-        let players: Vec<_> = [
-            Player::new(TileColor::Red),
-            Player::new(TileColor::Blue),
-            Player::new(TileColor::Yellow),
-            Player::new(TileColor::Green),
-        ]
-        .into_iter()
-        .take(player_count)
-        .collect();
-
-        Self::with_players(players)
-    }
-
-    /// Construct a fresh gamestate with a given set of `players`
-    pub fn with_players(players: Vec<Player>) -> Self {
-        assert!(players.len() <= 4, "Only up to four players are supported!");
-
-        let mut board = [[TileColor::default(); 22]; 22];
-        board[0] = [TileColor::Wall; 22];
-        board[21] = [TileColor::Wall; 22];
-
-        for i in 0..22 {
-            board[i][0] = TileColor::Wall;
-            board[i][21] = TileColor::Wall;
-        }
-
-        // Place invisible colored square in each corner of the board so players can make the first move.
-        // This simplifies move validation and makes bounds-checking less annoying.
-        for (p, (row, col)) in players.iter().zip([(21, 21), (0, 0), (0, 21), (21, 0)]) {
-            board[row][col] = p.color;
-        }
-
-        Self {
-            board,
-            players,
-            current_player: 0,
-            selected_piece: None,
-            piece_buffer: piece::EMPTY_SHAPE,
-        }
-    }
-
-    /// Attempt to finish the current player's turn by placing their current
-    /// piece at `piece_row` and `piece_col`. If the piece cannot be placed,
-    /// no state change occurs.
-    pub fn try_advance_turn(&mut self, piece_row: usize, piece_col: usize) {
-        debug::print_board(&self.board);
-
-        if self.try_place_piece(piece_row, piece_col) {
-            self.current_player = (self.current_player + 1) % self.players.len();
-        }
-    }
-
-    /// Writes the current player's piece buffer to the board centered at `row` and `col`.
-    /// Returns [`true`] if successful, returns [`false`] if piece was OOB.
-    pub fn try_place_piece(&mut self, row: usize, col: usize) -> bool {
-        debug_assert!(!self.players.is_empty());
-
-        // REFACTOR: Maybe move the offset code into this function.
-        // Abstraction is leaking(?) when the piece module needs to "know" about
-        // rows and columns of a board
-        eprint!("Mapping ({}, {}) -> ", row, col);
-        let (row, col) =
-            match piece::check_bounds_and_recenter(self.piece_buffer, row as isize, col as isize) {
-                Some(offs) => offs,
-                None => return false,
-            };
-        eprintln!("({}, {})", row, col);
-
-        if !self.valid_move(row + 1, col + 1) {
-            return false;
-        }
-
-        let player = &mut self.players[self.current_player];
-        for (dr, r) in self.piece_buffer.iter().enumerate() {
-            for dc in r.iter_ones() {
-                // Sometimes I wish Rust allowed signed indices.
-                let r_ind = (row + dr as isize) as usize;
-                let c_ind = (col + dc as isize) as usize;
-                self.board[r_ind + 1][c_ind + 1] = player.color;
-            }
-        }
-
-        player.remaining_pieces.remove(self.selected_piece.unwrap());
-
-        self.selected_piece = None;
-        self.piece_buffer = piece::EMPTY_SHAPE;
-
-        true
-    }
-
-    /// Determines if the current move is valid. Accepts a pointer to the full game board
-    /// and the player who wishes to make the move. Assumes the piece will be in bounds.
-    pub fn valid_move(&self, adj_row: isize, adj_col: isize) -> bool {
-        let player = &self.players[self.current_player];
-        let mut any_diagonal_matches = false;
-
-        for (r_ind, row) in self.piece_buffer.iter().enumerate() {
-            for tile in row.iter_ones() {
-                let r_coord = adj_row + r_ind as isize;
-                let c_coord = adj_col + tile as isize;
-
-                // The board must have space for all tiles that comprise the piece.
-                if self.board[r_coord as usize][c_coord as usize] != TileColor::Empty {
-                    return false;
-                }
-
-                let adjacents = [
-                    (r_coord - 1, c_coord),
-                    (r_coord, c_coord - 1),
-                    (r_coord + 1, c_coord),
-                    (r_coord, c_coord + 1),
-                ];
-
-                // No tiles adjacent
-                if adjacents
-                    .into_iter()
-                    .any(|(rc, cc)| self.board[rc as usize][cc as usize] == player.color)
-                {
-                    return false;
-                }
-
-                let diagonals = [
-                    (r_coord - 1, c_coord - 1),
-                    (r_coord + 1, c_coord - 1),
-                    (r_coord - 1, c_coord + 1),
-                    (r_coord + 1, c_coord + 1),
-                ];
-
-                any_diagonal_matches = any_diagonal_matches
-                    || diagonals
-                        .into_iter()
-                        .any(|(rc, cc)| self.board[rc as usize][cc as usize] == player.color);
-            }
-        }
-
-        any_diagonal_matches
-    }
-}
+use logic::GameState;
 
 #[macroquad::main("Blorus")]
 async fn main() {
@@ -237,15 +20,18 @@ async fn main() {
     const BOARD_VERT_OFFSET: f32 = 0.25;
 
     let mut game_state = GameState::new(2);
-    // test:
-    // game_state.piece_buffer = piece::PIECE_SHAPES[10];
-    game_state.piece_buffer = piece::SHAPES[19];
+    let win_texture = Texture2D::from_file_with_format(include_bytes!("../assets/WIN.png"), None);
 
     // =================
     //  -- Main loop --
     // =================
 
-    loop {
+    while !game_state.is_game_over() {
+        if !game_state.can_make_move() {
+            game_state.current_player = (game_state.current_player + 1) % game_state.players.len();
+            game_state.pass_counter += 1;
+        }
+
         clear_background(BEIGE);
 
         let tile_size = screen_height() * 0.045 * BOARD_SIZE;
@@ -490,6 +276,26 @@ async fn main() {
                 }
             }
         } // input section
+
+        next_frame().await;
+    }
+
+    // Game over screen
+    loop {
+        let draw_params = DrawTextureParams {
+            dest_size: Some(Vec2::new(screen_width(), screen_height())),
+            ..Default::default()
+        };
+        draw_texture_ex(win_texture, 0., 0., WHITE, draw_params);
+        let winning_player = &game_state.players[game_state.current_player];
+        draw_text(
+            &format!("{:?}", winning_player.color),
+            screen_width() / 2.,
+            screen_height() / 2.,
+            72.,
+            winning_player.color.into(),
+        );
+        // TODO: *return* from this function instead so you can start a new lobby.
         next_frame().await;
     }
 }
