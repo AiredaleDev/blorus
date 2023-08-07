@@ -2,7 +2,10 @@
 //!
 //! This is a board game from my childhood. It's also a nice excuse to get comfortable with using async/await semantics over the network.
 
-use macroquad::{prelude::*, audio::{load_sound, play_sound, PlaySoundParams}};
+use macroquad::{
+    audio::{load_sound, play_sound, PlaySoundParams},
+    prelude::*,
+};
 
 mod debug;
 mod logic;
@@ -21,13 +24,38 @@ async fn main() {
 
     let mut game_state = GameState::new(2);
     let win_texture = Texture2D::from_file_with_format(include_bytes!("../assets/WIN.png"), None);
-    
-    clear_background(BEIGE);
-    draw_text("Loading...", 0.75 * screen_width(), 0.9 * screen_height(), 0.05 * screen_height(), BLACK);
-    next_frame().await;
-    match load_sound("assets/SneakySnitch.ogg").await {
-        Ok(music) => play_sound(music, PlaySoundParams { looped: true, volume: 1. }),
-        Err(e) => eprintln!("Failed to load epic music :( -- {e}"),
+
+    // File I/O in Macroquad isn't *actually* async, unless you're in a browser.
+    // TODO: Remove conditional compilation if this ever becomes async on all platforms.
+    #[cfg(any(target_arch = "wasm32", target_arch = "wasm64"))]
+    coroutines::start_coroutine(async move {
+        match load_sound("assets/SneakySnitch.ogg").await {
+            Ok(music) => play_sound(
+                music,
+                PlaySoundParams {
+                    looped: true,
+                    volume: 1.,
+                },
+            ),
+            Err(e) => eprintln!("Failed to load epic music :( -- {e}"),
+        }
+    });
+
+    #[cfg(not(any(target_arch = "wasm32", target_arch = "wasm64")))]
+    {
+        clear_background(BEIGE);
+        draw_text("Loading...", 0.75 * screen_width(), 0.9 * screen_height(), 0.05 * screen_height(), BLACK);
+        next_frame().await;
+        match load_sound("assets/SneakySnitch.ogg").await {
+            Ok(music) => play_sound(
+                music,
+                PlaySoundParams {
+                    looped: true,
+                    volume: 1.,
+                },
+            ),
+            Err(e) => eprintln!("Failed to load epic music :( -- {e}"),
+        }
     }
 
     // =================

@@ -2,7 +2,6 @@
 
 * Determine how to represent local multiplayer vs online multiplayer (how can I reuse the core gameloop?)
 * Define the protocol for online multiplayer.
-* Determine which async runtime macroquad uses.
 * Will players need to portforward? Probably yes, unless I do some browser shenanigans.
 * Make a main menu.
 
