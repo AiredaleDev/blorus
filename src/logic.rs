@@ -8,12 +8,12 @@ pub type PieceID = usize;
 /// Denotes possible tile colors. Also used to denote player colors.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TileColor {
+    #[default]
+    Empty,
     Red,
     Yellow,
     Green,
     Blue,
-    #[default]
-    Empty,
     Wall,
 }
 
@@ -245,6 +245,8 @@ impl GameState {
         player.remaining_pieces.iter().any(|pc| {
             let mut piece_buf = piece::SHAPES[pc];
             use piece::{FlipDir, RotateDir};
+            // Do people find this hard to understand?
+            // I don't, but that's because I'm lambda-brained.
             (0..2).any(|_| {
                 piece_buf = piece::flip(piece_buf, FlipDir::Vertical);
                 (0..4).any(|_| {

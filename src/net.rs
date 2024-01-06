@@ -6,18 +6,32 @@ use crate::logic::Player;
 // Maybe define a trait for local game state and game server so you can use the
 // same game loop in local multiplayer and online multiplayer?
 
-// The Go guys were right to include interfaces in their language
-// (I presume the Rust guys just included them because they like having more ways to abstract things)
-
 enum OnlinePlayer {
-    Active { name: String, data: Player },
-    Disconnected { name: String, data: Player },
-    Spectator { name: String },
+    Playing {
+        name: String,
+        connection: TcpStream,
+        data: Player,
+    },
+    Spectator {
+        name: String,
+        connection: TcpStream,
+    },
+}
+
+impl OnlinePlayer {
+    pub fn disconnected(&self) -> bool {
+        let mut scratch = [0u8; 1];
+        match self {
+            Self::Playing { connection, .. } | Self::Spectator { connection, .. } => {
+                // we don't care about what packets we see, just that we can't get any more.
+                connection.peek(&mut scratch).is_err()
+            }
+        }
+    }
 }
 
 // TODO: Maybe move this struct? Or don't, if you can make it sufficiently involve the network.
 pub struct GameServer {
-    connections: Vec<TcpStream>,
     players: Vec<OnlinePlayer>,
 }
 
