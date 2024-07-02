@@ -250,7 +250,7 @@ pub fn check_bounds_and_recenter(shape: Shape, row: isize, col: isize) -> Option
         }
     }
 
-    dbg!(&shape_bounds);
+    // dbg!(&shape_bounds);
 
     if row + shape_bounds[0] >= 0
         && row + shape_bounds[1] < 20
@@ -279,6 +279,7 @@ fn transpose(shape: Shape) -> Shape {
     new_shape
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 

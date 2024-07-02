@@ -44,7 +44,7 @@ impl Into<Color> for TileColor {
 }
 
 /// Player data
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Player {
     /// Player's color
     pub color: TileColor,
@@ -53,8 +53,7 @@ pub struct Player {
 }
 
 impl Player {
-    /// Construct a new player with this color, all pieces in hand,
-    /// and an empty piece buffer.
+    /// Construct a new player with this color, all pieces in hand.
     pub fn new(color: TileColor) -> Self {
         Self {
             color,
@@ -87,9 +86,9 @@ impl GameState {
     /// For internal testing only.
     pub fn new(player_count: usize) -> Self {
         let players: Vec<_> = [
-            Player::new(TileColor::Red),
             Player::new(TileColor::Blue),
             Player::new(TileColor::Yellow),
+            Player::new(TileColor::Red),
             Player::new(TileColor::Green),
         ]
         .into_iter()
@@ -112,9 +111,17 @@ impl GameState {
             board[i][21] = TileColor::Wall;
         }
 
-        // Place invisible colored square in each corner of the board so players can make the first move.
-        // This simplifies move validation and makes bounds-checking less annoying.
-        for (p, (row, col)) in players.iter().zip([(21, 21), (0, 0), (0, 21), (21, 0)]) {
+        // Place invisible colored square in each corner of the board so players 
+        // can make the first move. This simplifies move validation and makes 
+        // bounds-checking less annoying. For two players, we place them across
+        // from each other, otherwise each player takes their turn in a 
+        // clockwise order.
+        let corners = if players.len() <= 2 {
+            [(21, 21), (0, 0), (0, 0), (0, 0)]
+        } else {
+            [(21, 21), (21, 0), (0, 0), (0, 21)]
+        };
+        for (p, (row, col)) in players.iter().zip(corners) {
             board[row][col] = p.color;
         }
 
@@ -130,19 +137,23 @@ impl GameState {
 
     /// Attempt to finish the current player's turn by placing their current
     /// piece at `piece_row` and `piece_col`. If the piece cannot be placed,
-    /// no state change occurs.
-    pub fn try_advance_turn(&mut self, piece_row: usize, piece_col: usize) {
+    /// no state change occurs. Returns [`true`] if piece was placed and
+    /// turn advanced.
+    pub fn try_advance_turn(&mut self, piece_row: usize, piece_col: usize) -> bool {
         debug::print_board(&self.board);
 
-        if self.try_place_piece(piece_row, piece_col) {
+        let place_ok = self.try_place_piece(piece_row, piece_col);
+        if place_ok {
             self.pass_counter = 0;
             self.current_player = (self.current_player + 1) % self.players.len();
         }
+
+        place_ok
     }
 
     /// Writes the current player's piece buffer to the board centered at `row` and `col`.
-    /// Returns [`true`] if successful, returns [`false`] if piece was OOB.
-    pub fn try_place_piece(&mut self, row: usize, col: usize) -> bool {
+    /// Returns [`true`] if successful, returns [`false`] otherwise.
+    fn try_place_piece(&mut self, row: usize, col: usize) -> bool {
         debug_assert!(!self.players.is_empty());
 
         // REFACTOR: Maybe move the offset code into this function.
@@ -244,7 +255,7 @@ impl GameState {
         let player = &self.players[self.current_player];
         player.remaining_pieces.iter().any(|pc| {
             let mut piece_buf = piece::SHAPES[pc];
-            use piece::{FlipDir, RotateDir};
+            use piece::{RotateDir, FlipDir};
             // Do people find this hard to understand?
             // I don't, but that's because I'm lambda-brained.
             (0..2).any(|_| {
@@ -262,5 +273,54 @@ impl GameState {
             .remaining_pieces
             .is_empty()
             || self.pass_counter == self.players.len()
+    }
+
+    pub fn select_piece(&mut self, piece_id: Option<PieceID>) { 
+        self.selected_piece = piece_id;
+        let shape = match piece_id {
+            Some(id) => piece::SHAPES[id],
+            None => piece::EMPTY_SHAPE,
+        };
+        self.piece_buffer = shape;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accept_correct_move() {
+        let mut game_state = GameState::new(4);
+        // L5 shape, bottom right:
+        game_state.select_piece(Some(10));
+        assert!(game_state.try_advance_turn(18, 18));
+
+        // Dot piece, bottom left:
+        game_state.select_piece(Some(0));
+        assert!(game_state.try_advance_turn(19, 0));
+
+        // Notch square, top left:
+        game_state.select_piece(Some(14));
+        assert!(game_state.try_advance_turn(0, 1));
+    }
+
+    #[test]
+    fn reject_incorrect_move() {
+        // Wrong corner
+        // Adjacent, same color
+        // Middle of nowhere
+    }
+
+    #[test]
+    fn decide_if_playable() {
+        let mut game_state = GameState::new(2);
+        // At least the *empty* board should be considered playable.
+        assert!(game_state.can_make_move());
+
+        game_state.select_piece(Some(1));
+        game_state.try_advance_turn(18, 19);
+        // Nowhere near done.
+        assert!(game_state.can_make_move());
     }
 }

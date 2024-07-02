@@ -1,5 +1,6 @@
 # TODO:
 
+* BETTER UI -- Placing pieces feels very awkward. What would feel good?
 * Determine how to represent local multiplayer vs online multiplayer (how can I reuse the core gameloop?)
 * Define the protocol for online multiplayer.
 * Will players need to portforward? Probably yes, unless I do some browser shenanigans.

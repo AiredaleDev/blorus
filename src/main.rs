@@ -141,7 +141,7 @@ fn draw_game_screen(
     // mayhaps I should bundle these together into "screeninfo"
     board_top_left: Vec2,
     play_area_top_left: Vec2,
-    avail_pieces: Vec2,
+    avail_pieces_top_left: Vec2,
     tile_size: f32,
     ui_tile_size: f32,
 ) {
@@ -265,16 +265,16 @@ fn draw_game_screen(
                 let row = piece_id / 11;
                 let col = piece_id % 11;
                 draw_rectangle(
-                    tile as f32 * ui_tile_size + avail_pieces.x + offset * col as f32,
-                    r_ind as f32 * ui_tile_size + avail_pieces.y + offset * row as f32,
+                    tile as f32 * ui_tile_size + avail_pieces_top_left.x + offset * col as f32,
+                    r_ind as f32 * ui_tile_size + avail_pieces_top_left.y + offset * row as f32,
                     ui_tile_size,
                     ui_tile_size,
                     player.color.into(),
                 );
 
                 draw_rectangle_lines(
-                    tile as f32 * ui_tile_size + avail_pieces.x + offset * col as f32,
-                    r_ind as f32 * ui_tile_size + avail_pieces.y + offset * row as f32,
+                    tile as f32 * ui_tile_size + avail_pieces_top_left.x + offset * col as f32,
+                    r_ind as f32 * ui_tile_size + avail_pieces_top_left.y + offset * row as f32,
                     ui_tile_size,
                     ui_tile_size,
                     2.,
@@ -359,12 +359,10 @@ fn handle_input(
                 .remaining_pieces
                 .contains(piece_id)
             {
-                game_state.selected_piece = Some(piece_id);
-                game_state.piece_buffer = piece::SHAPES[piece_id];
+                game_state.select_piece(Some(piece_id));
             }
         } else {
-            game_state.selected_piece = None;
-            game_state.piece_buffer = piece::EMPTY_SHAPE;
+            game_state.select_piece(None);
         }
     }
 }
