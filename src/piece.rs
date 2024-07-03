@@ -226,43 +226,6 @@ pub fn flip(shape: Shape, dir: FlipDir) -> Shape {
     new_shape
 }
 
-/// Returns adjusted coordinates if `shape` can be placed at them. Returns `None` otherwise.
-pub fn check_bounds_and_recenter(shape: Shape, row: isize, col: isize) -> Option<(isize, isize)> {
-    // top row, bottom row, left col, right col
-    let mut shape_bounds = [0; 4];
-
-    for (dr, r) in shape.iter().enumerate() {
-        for dc in r.iter_ones() {
-            let dr = dr as isize - 2;
-            let dc = dc as isize - 2;
-            // Only update if we have any 1s in this row. If we don't, do nothing.
-            if dr < shape_bounds[0] {
-                shape_bounds[0] = dr;
-            } else if dr > shape_bounds[1] {
-                shape_bounds[1] = dr;
-            }
-
-            if dc < shape_bounds[2] {
-                shape_bounds[2] = dc;
-            } else if dc > shape_bounds[3] {
-                shape_bounds[3] = dc;
-            }
-        }
-    }
-
-    // dbg!(&shape_bounds);
-
-    if row + shape_bounds[0] >= 0
-        && row + shape_bounds[1] < 20
-        && col + shape_bounds[2] >= 0
-        && col + shape_bounds[3] < 20
-    {
-        Some((row - 2, col - 2))
-    } else {
-        None
-    }
-}
-
 // Sure, [[bool; 5]; 5] would have been easier to work with.
 // Do I really see any performance wins with this after all? Who knows at this point lmfao
 fn transpose(shape: Shape) -> Shape {

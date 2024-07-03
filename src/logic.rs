@@ -43,6 +43,18 @@ impl Into<Color> for TileColor {
     }
 }
 
+impl TileColor {
+    pub fn highlight_color(self) -> Color {
+        match self {
+            TileColor::Red => color_u8!(0xff, 0x70, 0x70, 0xff),
+            TileColor::Yellow => color_u8!(0xff, 0xee, 0x75, 0xff),
+            TileColor::Green => color_u8!(0x8d, 0xff, 0x6b, 0xff),
+            TileColor::Blue => color_u8!(0x28, 0xa0, 0xff, 0xff),
+            TileColor::Empty | TileColor::Wall => BLANK,
+        }
+    }
+}
+
 /// Player data
 #[derive(Debug, Clone)]
 pub struct Player {
@@ -101,7 +113,6 @@ impl GameState {
     /// Construct a fresh gamestate with a given set of `players`
     pub fn with_players(players: Vec<Player>) -> Self {
         assert!(players.len() <= 4, "Only up to four players are supported!");
-
         let mut board = [[TileColor::default(); 22]; 22];
         board[0] = [TileColor::Wall; 22];
         board[21] = [TileColor::Wall; 22];
@@ -111,10 +122,10 @@ impl GameState {
             board[i][21] = TileColor::Wall;
         }
 
-        // Place invisible colored square in each corner of the board so players 
-        // can make the first move. This simplifies move validation and makes 
+        // Place invisible colored square in each corner of the board so players
+        // can make the first move. This simplifies move validation and makes
         // bounds-checking less annoying. For two players, we place them across
-        // from each other, otherwise each player takes their turn in a 
+        // from each other, otherwise each player takes their turn in a
         // clockwise order.
         let corners = if players.len() <= 2 {
             [(21, 21), (0, 0), (0, 0), (0, 0)]
@@ -135,48 +146,53 @@ impl GameState {
         }
     }
 
-    /// Attempt to finish the current player's turn by placing their current
-    /// piece at `piece_row` and `piece_col`. If the piece cannot be placed,
-    /// no state change occurs. Returns [`true`] if piece was placed and
-    /// turn advanced.
-    pub fn try_advance_turn(&mut self, piece_row: usize, piece_col: usize) -> bool {
-        debug::print_board(&self.board);
-
-        let place_ok = self.try_place_piece(piece_row, piece_col);
-        if place_ok {
-            self.pass_counter = 0;
-            self.current_player = (self.current_player + 1) % self.players.len();
+    /// Returns adjusted coordinates if `shape` can be placed at them. Returns `None` otherwise.
+    pub fn check_bounds_and_recenter(&self, row: isize, col: isize) -> Option<(isize, isize)> {
+        // top row, bottom row, left col, right col
+        let mut shape_bounds = [0; 4];
+    
+        for (dr, r) in self.piece_buffer.iter().enumerate() {
+            for dc in r.iter_ones() {
+                let dr = dr as isize - 2;
+                let dc = dc as isize - 2;
+                // Only update if we have any 1s in this row. If we don't, do nothing.
+                if dr < shape_bounds[0] {
+                    shape_bounds[0] = dr;
+                } else if dr > shape_bounds[1] {
+                    shape_bounds[1] = dr;
+                }
+    
+                if dc < shape_bounds[2] {
+                    shape_bounds[2] = dc;
+                } else if dc > shape_bounds[3] {
+                    shape_bounds[3] = dc;
+                }
+            }
         }
-
-        place_ok
+    
+        // dbg!(&shape_bounds);
+    
+        if row + shape_bounds[0] >= 0
+            && row + shape_bounds[1] < (self.board.len() - 2) as isize
+            && col + shape_bounds[2] >= 0
+            && col + shape_bounds[3] < (self.board.len() - 2) as isize
+        {
+            Some((row - 2, col - 2))
+        } else {
+            None
+        }
     }
 
     /// Writes the current player's piece buffer to the board centered at `row` and `col`.
-    /// Returns [`true`] if successful, returns [`false`] otherwise.
-    fn try_place_piece(&mut self, row: usize, col: usize) -> bool {
+    pub fn place_piece(&mut self, adj_row: isize, adj_col: isize) {
+        debug::print_board(&self.board);
         debug_assert!(!self.players.is_empty());
-
-        // REFACTOR: Maybe move the offset code into this function.
-        // Abstraction is leaking(?) when the piece module needs to "know" about
-        // rows and columns of a board
-        eprint!("Mapping ({}, {}) -> ", row, col);
-        let (row, col) =
-            match piece::check_bounds_and_recenter(self.piece_buffer, row as isize, col as isize) {
-                Some(offs) => offs,
-                None => return false,
-            };
-        eprintln!("({}, {})", row, col);
-
-        if !self.valid_move(&self.piece_buffer, row + 1, col + 1) {
-            return false;
-        }
-
         let player = &mut self.players[self.current_player];
         for (dr, r) in self.piece_buffer.iter().enumerate() {
             for dc in r.iter_ones() {
                 // Sometimes I wish Rust allowed signed indices.
-                let r_ind = (row + dr as isize) as usize;
-                let c_ind = (col + dc as isize) as usize;
+                let r_ind = (adj_row + dr as isize) as usize;
+                let c_ind = (adj_col + dc as isize) as usize;
                 self.board[r_ind + 1][c_ind + 1] = player.color;
             }
         }
@@ -185,17 +201,22 @@ impl GameState {
 
         self.selected_piece = None;
         self.piece_buffer = piece::EMPTY_SHAPE;
-
-        true
+        // We were able to place a piece, so clearly this player did not pass.
+        self.pass_counter = 0;
     }
 
     /// Determines if the current move is valid. Accepts a pointer to the full game board
     /// and the player who wishes to make the move. Assumes the piece will be in bounds.
-    pub fn valid_move(&self, piece_buf: &piece::Shape, adj_row: isize, adj_col: isize) -> bool {
+    pub fn valid_move(&self, adj_row: isize, adj_col: isize) -> bool {
+        self._valid_move(&self.piece_buffer, adj_row, adj_col)
+    }
+
+    // For internal use -- needed only because `can_make_move` needs its own piece buffer.
+    fn _valid_move(&self, piece_buffer: &piece::Shape, adj_row: isize, adj_col: isize) -> bool {
         let player = &self.players[self.current_player];
         let mut any_diagonal_matches = false;
 
-        for (r_ind, row) in piece_buf.iter().enumerate() {
+        for (r_ind, row) in piece_buffer.iter().enumerate() {
             for tile in row.iter_ones() {
                 let r_coord = adj_row + r_ind as isize;
                 let c_coord = adj_col + tile as isize;
@@ -237,11 +258,15 @@ impl GameState {
         any_diagonal_matches
     }
 
+    /// Go to the next player.
+    pub fn end_turn(&mut self) {
+        self.current_player = (self.current_player + 1) % self.players.len();
+    }
+
     /// With the current implementation of things, a naive solution
     /// is the best one.
     ///
-    /// This tries to place all remaining pieces on every tile on the board.
-    /// At all eight possible orientations.
+    /// This tries to place all remaining pieces on every tile on the board for eight possible orientations.
     /// I figured we might be able to make this faster by storing valid coordinates for each player.
     /// That would require I record this set of points in GameState and send rotated copies of those to each player.
     /// I don't know if there's any value to precomputing these points.
@@ -255,14 +280,14 @@ impl GameState {
         let player = &self.players[self.current_player];
         player.remaining_pieces.iter().any(|pc| {
             let mut piece_buf = piece::SHAPES[pc];
-            use piece::{RotateDir, FlipDir};
+            use piece::{FlipDir, RotateDir};
             // Do people find this hard to understand?
             // I don't, but that's because I'm lambda-brained.
             (0..2).any(|_| {
                 piece_buf = piece::flip(piece_buf, FlipDir::Vertical);
                 (0..4).any(|_| {
                     piece_buf = piece::rotate(piece_buf, RotateDir::Right);
-                    (0..20).any(|row| (0..20).any(|col| self.valid_move(&piece_buf, row, col)))
+                    (0..20).any(|row| (0..20).any(|col| self._valid_move(&piece_buf, row, col)))
                 })
             })
         })
@@ -275,13 +300,33 @@ impl GameState {
             || self.pass_counter == self.players.len()
     }
 
-    pub fn select_piece(&mut self, piece_id: Option<PieceID>) { 
+    pub fn select_piece(&mut self, piece_id: Option<PieceID>) {
         self.selected_piece = piece_id;
         let shape = match piece_id {
             Some(id) => piece::SHAPES[id],
             None => piece::EMPTY_SHAPE,
         };
         self.piece_buffer = shape;
+    }
+
+    pub fn current_player(&self) -> &Player {
+        &self.players[self.current_player]
+    }
+
+    #[cfg(test)]
+    pub fn try_advance_turn(&mut self, row: usize, col: usize) -> bool {
+        let (adj_row, adj_col) =
+            match self.check_bounds_and_recenter(row as isize, col as isize) {
+                Some(coords) => coords,
+                None => return false,
+            };
+
+        let place_ok = self.valid_move(adj_row + 1, adj_col + 1);
+        if place_ok {
+            self.place_piece(adj_row, adj_col);
+            self.end_turn();
+        }
+        place_ok
     }
 }
 

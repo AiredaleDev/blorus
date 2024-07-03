@@ -1,6 +1,7 @@
 //! Blokus clone written in Rust.
 //!
-//! This is a board game from my childhood. It's also a nice excuse to get comfortable with using async/await semantics over the network.
+//! This is a board game from my childhood. It's also a nice excuse to get comfortable with
+//! networked programming in an environment where the performance requirements aren't too stringent.
 
 use macroquad::{
     audio::{load_sound, play_sound, PlaySoundParams},
@@ -22,7 +23,8 @@ const BOARD_VERT_OFFSET: f32 = 0.25;
 
 #[macroquad::main("Blorus")]
 async fn main() {
-    let mut game_state = GameState::new(2);
+    let mut game_state = GameState::new(4);
+    let mut placement_hint = None;
     let win_texture = Texture2D::from_file_with_format(include_bytes!("../assets/WIN.png"), None);
 
     // File I/O in Macroquad isn't *actually* async, unless you're in a browser.
@@ -98,6 +100,7 @@ async fn main() {
 
         draw_game_screen(
             &game_state,
+            &placement_hint,
             board_top_left,
             play_area_top_left,
             avail_pieces,
@@ -107,6 +110,7 @@ async fn main() {
 
         handle_input(
             &mut game_state,
+            &mut placement_hint,
             play_area_top_left,
             avail_pieces,
             tile_size,
@@ -138,6 +142,7 @@ async fn main() {
 
 fn draw_game_screen(
     game_state: &GameState,
+    placement_hint: &Option<UVec2>,
     // mayhaps I should bundle these together into "screeninfo"
     board_top_left: Vec2,
     play_area_top_left: Vec2,
@@ -164,6 +169,19 @@ fn draw_game_screen(
                 tile_size,
                 game_state.board[row + 1][col + 1].into(),
             );
+
+            // Ah, that's right, I only expressed a desire to highlight the square
+            // when I wanted the whole buffer to be drawn...
+            // We'll need to read the buffer.
+            if let Some(UVec2 { x: l_col, y: l_row }) = *placement_hint {
+                draw_rectangle(
+                    play_area_top_left.x + l_col as f32 * tile_size,
+                    play_area_top_left.y + l_row as f32 * tile_size,
+                    tile_size,
+                    tile_size,
+                    game_state.current_player().color.highlight_color(),
+                );
+            }
         }
     }
 
@@ -287,6 +305,7 @@ fn draw_game_screen(
 
 fn handle_input(
     game_state: &mut GameState,
+    placement_hint: &mut Option<UVec2>,
     play_area_top_left: Vec2,
     avail_pieces_pt: Vec2,
     tile_size: f32,
@@ -336,6 +355,35 @@ fn handle_input(
     }
 
     let mouse_pos = Vec2::from(mouse_position());
+    // I will simply pull move-validation out to run on mouse hover,
+    // and then just place the piece. `try_advance_turn` is now likely to go.
+    //
+    // Ahh, so the rub is simply that I'm now also going to need to remember
+    // where I last highlighted. That's fine, just set aside some scratch space
+    // local to the client. It doesn't make sense to send that over the network anyway.
+    // I'm starting to think we're going to need a "UI state"
+
+    if board_rect.contains(mouse_pos) {
+        let corner = uvec2(
+            ((mouse_pos.x - board_rect.x) / tile_size) as u32,
+            ((mouse_pos.y - board_rect.y) / tile_size) as u32,
+        );
+
+        // This is a really leaky abstraction.
+        // I'm feeling the assumptions I made earlier.
+        if let Some((adj_row, adj_col)) = game_state.check_bounds_and_recenter(
+            corner.y as isize,
+            corner.x as isize,
+        ) {
+            // Why did I need to do "+1" here?
+            *placement_hint = if game_state.valid_move(adj_row + 1, adj_col + 1) {
+                Some(corner)
+            } else {
+                None
+            };
+        }
+    }
+
     if is_mouse_button_pressed(MouseButton::Left) {
         if board_rect.contains(mouse_pos) {
             // put a piece on the board
@@ -344,7 +392,14 @@ fn handle_input(
                 ((mouse_pos.y - board_rect.y) / tile_size) as usize,
             );
             dbg!(row, col);
-            game_state.try_advance_turn(row, col);
+            
+            if let Some(UVec2 { x, y }) = *placement_hint {
+                // Need to recenter -- this coupling is undesirable
+                let (adj_row, adj_col) = game_state.check_bounds_and_recenter(y as isize, x as isize).unwrap();
+                game_state.place_piece(adj_row, adj_col);
+                game_state.end_turn();
+                *placement_hint = None;
+            }
         } else if piece_rect.contains(mouse_pos) {
             // Change selected piece.
             let piece_size = 5. * ui_tile_size;
