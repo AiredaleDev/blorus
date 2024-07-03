@@ -7,13 +7,14 @@ use macroquad::{
     audio::{load_sound, play_sound, PlaySoundParams},
     prelude::*,
 };
+use std::env::args;
 
 mod debug;
 mod logic;
 mod net;
 mod piece;
 
-use logic::GameState;
+use logic::{GameState, Player, TileColor};
 
 // Modify these to move or scale the board as a proportion of the screen.
 // The board automatically resizes itself with the window.
@@ -23,12 +24,6 @@ const BOARD_VERT_OFFSET: f32 = 0.25;
 
 #[macroquad::main("Blorus")]
 async fn main() {
-    let mut game_state = GameState::new(4);
-    // TODO: Put this somewhere more sane -- it now has the final say on whether or not the player
-    // is making a valid move!
-    let mut placement_hint = None;
-    let win_texture = Texture2D::from_file_with_format(include_bytes!("../assets/WIN.png"), None);
-
     // File I/O in Macroquad isn't *actually* async, unless you're in a browser.
     // TODO: Remove conditional compilation if this ever becomes async on all platforms.
     #[cfg(any(target_arch = "wasm32", target_arch = "wasm64"))]
@@ -68,9 +63,54 @@ async fn main() {
         }
     }
 
-    // =================
-    //  -- Main loop --
-    // =================
+    let mut args = args().skip(1);
+    // I feel like I should've been able to pattern-match this.
+    // Anyway, I left this branch in so I could still play the game quickly.
+    if let Some(demo_flag) = args.next() {
+        if demo_flag == "demo" {
+            let players = [
+                TileColor::Blue,
+                TileColor::Yellow,
+                TileColor::Red,
+                TileColor::Green,
+            ]
+            .map(Player::new)
+            .to_vec();
+            game_loop(players).await;
+        }
+    }
+}
+
+/// Local multiplayer setup screen
+async fn setup_screen() {
+    let mut players = Vec::new();
+
+    // Change to "while not (exit condition)"
+    loop {
+        clear_background(BEIGE);
+        // You know, maybe it would be fun for networked multiplayer to let you fidget
+        // with the piece that represents you and have it display to everyone in the lobby.
+        // That's a good sort of thing to have if you're waiting on someone to arrive.
+
+        // So this screen just has an "add/remove player" button, a "change color" button for each player,
+        // as well as a play/ready button. The UI is almost 100% repurposable for both local and
+        // online multiplayer.
+        //
+        // Forcing people to leave and rejoin to get their desired color is annoying, so there will
+        // also be a "swap color" button to offer to switch colors with someone else.
+
+
+
+        next_frame().await;
+    }
+}
+
+async fn game_loop(players: Vec<Player>) {
+    let mut game_state = GameState::with_players(players);
+    // TODO: Put this somewhere more sane -- it now has the final say on whether or not the player
+    // is making a valid move!
+    let mut placement_hint = None;
+    let win_texture = Texture2D::from_file_with_format(include_bytes!("../assets/WIN.png"), None);
 
     while !game_state.is_game_over() {
         if !game_state.can_make_move() {

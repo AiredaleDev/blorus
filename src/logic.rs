@@ -98,11 +98,12 @@ impl GameState {
     /// For internal testing only.
     pub fn new(player_count: usize) -> Self {
         let players: Vec<_> = [
-            Player::new(TileColor::Blue),
-            Player::new(TileColor::Yellow),
-            Player::new(TileColor::Red),
-            Player::new(TileColor::Green),
+            TileColor::Blue,
+            TileColor::Yellow,
+            TileColor::Red,
+            TileColor::Green,
         ]
+        .map(Player::new)
         .into_iter()
         .take(player_count)
         .collect();

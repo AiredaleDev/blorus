@@ -7,7 +7,7 @@
 * Determine how to represent local multiplayer vs online multiplayer (how can I reuse the core gameloop?)
 * Define the protocol for online multiplayer.
 * Will players need to portforward? Probably yes, unless I do some browser shenanigans.
-* Make a main menu.
+* Make a main menu. <- this next -- also a game setup screen
 
 ## Network protocol
 
