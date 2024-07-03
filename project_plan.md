@@ -1,6 +1,9 @@
 # TODO:
 
 * BETTER UI -- Placing pieces feels very awkward. What would feel good?
+  * To achieve the best experience, I think I'll have to pull the "piece buffer" out of the game state, or at least section
+  off move validation to some separate thing. It doesn't make sense to send the piece a player is considering to play over the network.
+  * Placement hint is currently a little hacky, could we put it somewhere more sensible? For now, it works.
 * Determine how to represent local multiplayer vs online multiplayer (how can I reuse the core gameloop?)
 * Define the protocol for online multiplayer.
 * Will players need to portforward? Probably yes, unless I do some browser shenanigans.

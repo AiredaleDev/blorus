@@ -24,6 +24,8 @@ const BOARD_VERT_OFFSET: f32 = 0.25;
 #[macroquad::main("Blorus")]
 async fn main() {
     let mut game_state = GameState::new(4);
+    // TODO: Put this somewhere more sane -- it now has the final say on whether or not the player
+    // is making a valid move!
     let mut placement_hint = None;
     let win_texture = Texture2D::from_file_with_format(include_bytes!("../assets/WIN.png"), None);
 
@@ -72,7 +74,7 @@ async fn main() {
 
     while !game_state.is_game_over() {
         if !game_state.can_make_move() {
-            game_state.current_player = (game_state.current_player + 1) % game_state.players.len();
+            game_state.end_turn();
             game_state.pass_counter += 1;
         }
 
@@ -142,7 +144,7 @@ async fn main() {
 
 fn draw_game_screen(
     game_state: &GameState,
-    placement_hint: &Option<UVec2>,
+    placement_hint: &Option<IVec2>,
     // mayhaps I should bundle these together into "screeninfo"
     board_top_left: Vec2,
     play_area_top_left: Vec2,
@@ -169,14 +171,18 @@ fn draw_game_screen(
                 tile_size,
                 game_state.board[row + 1][col + 1].into(),
             );
+        }
+    }
 
-            // Ah, that's right, I only expressed a desire to highlight the square
-            // when I wanted the whole buffer to be drawn...
-            // We'll need to read the buffer.
-            if let Some(UVec2 { x: l_col, y: l_row }) = *placement_hint {
+    if let Some(IVec2 { x: l_col, y: l_row }) = *placement_hint {
+        // Okay, looks like we have a placeable piece -- let's draw where it could be.
+        for (dr, r) in game_state.piece_buffer.iter().enumerate() {
+            for dc in r.iter_ones() {
+                let t_row = l_row + dr as i32;
+                let t_col = l_col + dc as i32;
                 draw_rectangle(
-                    play_area_top_left.x + l_col as f32 * tile_size,
-                    play_area_top_left.y + l_row as f32 * tile_size,
+                    play_area_top_left.x + t_col as f32 * tile_size,
+                    play_area_top_left.y + t_row as f32 * tile_size,
                     tile_size,
                     tile_size,
                     game_state.current_player().color.highlight_color(),
@@ -305,13 +311,13 @@ fn draw_game_screen(
 
 fn handle_input(
     game_state: &mut GameState,
-    placement_hint: &mut Option<UVec2>,
+    placement_hint: &mut Option<IVec2>,
     play_area_top_left: Vec2,
     avail_pieces_pt: Vec2,
     tile_size: f32,
     ui_tile_size: f32,
 ) {
-    // click detection rect
+    // click detection rects
     let board_rect = Rect::new(
         play_area_top_left.x,
         play_area_top_left.y,
@@ -333,6 +339,11 @@ fn handle_input(
     {
         use piece::FlipDir;
         game_state.piece_buffer = piece::flip(game_state.piece_buffer, FlipDir::Horizontal);
+        // Can't quite do `Option::map` since `update_suggestion` is T -> Option<U> not T -> U.
+        *placement_hint = match *placement_hint {
+            Some(proposed) => update_suggestion(&game_state, proposed),
+            None => None,
+        };
     }
 
     if [KeyCode::W, KeyCode::S, KeyCode::Up, KeyCode::Down]
@@ -341,62 +352,47 @@ fn handle_input(
     {
         use piece::FlipDir;
         game_state.piece_buffer = piece::flip(game_state.piece_buffer, FlipDir::Vertical);
+        *placement_hint = match *placement_hint {
+            Some(proposed) => update_suggestion(&game_state, proposed),
+            None => None,
+        };
     }
 
     // Rotate pieces
     if is_key_pressed(KeyCode::Q) || is_key_pressed(KeyCode::PageUp) {
         use piece::RotateDir;
         game_state.piece_buffer = piece::rotate(game_state.piece_buffer, RotateDir::Left);
+        *placement_hint = match *placement_hint {
+            Some(proposed) => update_suggestion(&game_state, proposed),
+            None => None,
+        };
     }
 
     if is_key_pressed(KeyCode::E) || is_key_pressed(KeyCode::PageDown) {
         use piece::RotateDir;
         game_state.piece_buffer = piece::rotate(game_state.piece_buffer, RotateDir::Right);
+        *placement_hint = match *placement_hint {
+            Some(proposed) => update_suggestion(&game_state, proposed),
+            None => None,
+        };
     }
 
     let mouse_pos = Vec2::from(mouse_position());
-    // I will simply pull move-validation out to run on mouse hover,
-    // and then just place the piece. `try_advance_turn` is now likely to go.
-    //
-    // Ahh, so the rub is simply that I'm now also going to need to remember
-    // where I last highlighted. That's fine, just set aside some scratch space
-    // local to the client. It doesn't make sense to send that over the network anyway.
-    // I'm starting to think we're going to need a "UI state"
-
+    // If this move is valid, mark it as such for the drawing logic.
     if board_rect.contains(mouse_pos) {
-        let corner = uvec2(
-            ((mouse_pos.x - board_rect.x) / tile_size) as u32,
-            ((mouse_pos.y - board_rect.y) / tile_size) as u32,
+        let center = ivec2(
+            ((mouse_pos.x - board_rect.x) / tile_size) as i32,
+            ((mouse_pos.y - board_rect.y) / tile_size) as i32,
         );
 
-        // This is a really leaky abstraction.
-        // I'm feeling the assumptions I made earlier.
-        if let Some((adj_row, adj_col)) = game_state.check_bounds_and_recenter(
-            corner.y as isize,
-            corner.x as isize,
-        ) {
-            // Why did I need to do "+1" here?
-            *placement_hint = if game_state.valid_move(adj_row + 1, adj_col + 1) {
-                Some(corner)
-            } else {
-                None
-            };
-        }
+        *placement_hint = update_suggestion(&game_state, center);
     }
 
     if is_mouse_button_pressed(MouseButton::Left) {
         if board_rect.contains(mouse_pos) {
-            // put a piece on the board
-            let (col, row) = (
-                ((mouse_pos.x - board_rect.x) / tile_size) as usize,
-                ((mouse_pos.y - board_rect.y) / tile_size) as usize,
-            );
-            dbg!(row, col);
-            
-            if let Some(UVec2 { x, y }) = *placement_hint {
-                // Need to recenter -- this coupling is undesirable
-                let (adj_row, adj_col) = game_state.check_bounds_and_recenter(y as isize, x as isize).unwrap();
-                game_state.place_piece(adj_row, adj_col);
+            // put a piece on the board -- we know where, since we already validated!
+            if let Some(corner) = *placement_hint {
+                game_state.place_piece(corner);
                 game_state.end_turn();
                 *placement_hint = None;
             }
@@ -410,7 +406,8 @@ fn handle_input(
             dbg!(row, col);
 
             let piece_id = row * 11 + col;
-            if game_state.players[game_state.current_player]
+            if game_state
+                .current_player()
                 .remaining_pieces
                 .contains(piece_id)
             {
@@ -419,5 +416,19 @@ fn handle_input(
         } else {
             game_state.select_piece(None);
         }
+    }
+}
+
+fn update_suggestion(game_state: &GameState, proposed: IVec2) -> Option<IVec2> {
+    if let Some(corner) = game_state.check_bounds_and_recenter(proposed) {
+        // Why did I need to do "+1" here?
+        // I completely forgot what madness led me here.
+        if game_state.valid_move(corner + IVec2::ONE) {
+            Some(corner)
+        } else {
+            None
+        }
+    } else {
+        None
     }
 }

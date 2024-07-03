@@ -147,21 +147,22 @@ impl GameState {
     }
 
     /// Returns adjusted coordinates if `shape` can be placed at them. Returns `None` otherwise.
-    pub fn check_bounds_and_recenter(&self, row: isize, col: isize) -> Option<(isize, isize)> {
+    pub fn check_bounds_and_recenter(&self, center: IVec2) -> Option<IVec2> {
+        let IVec2 { x: col, y: row } = center;
         // top row, bottom row, left col, right col
         let mut shape_bounds = [0; 4];
-    
+
         for (dr, r) in self.piece_buffer.iter().enumerate() {
             for dc in r.iter_ones() {
-                let dr = dr as isize - 2;
-                let dc = dc as isize - 2;
+                let dr = dr as i32 - 2;
+                let dc = dc as i32 - 2;
                 // Only update if we have any 1s in this row. If we don't, do nothing.
                 if dr < shape_bounds[0] {
                     shape_bounds[0] = dr;
                 } else if dr > shape_bounds[1] {
                     shape_bounds[1] = dr;
                 }
-    
+
                 if dc < shape_bounds[2] {
                     shape_bounds[2] = dc;
                 } else if dc > shape_bounds[3] {
@@ -169,30 +170,34 @@ impl GameState {
                 }
             }
         }
-    
-        // dbg!(&shape_bounds);
-    
+
         if row + shape_bounds[0] >= 0
-            && row + shape_bounds[1] < (self.board.len() - 2) as isize
+            && row + shape_bounds[1] < (self.board.len() - 2) as i32
             && col + shape_bounds[2] >= 0
-            && col + shape_bounds[3] < (self.board.len() - 2) as isize
+            && col + shape_bounds[3] < (self.board.len() - 2) as i32
         {
-            Some((row - 2, col - 2))
+            Some(ivec2(col - 2, row - 2))
         } else {
             None
         }
     }
 
-    /// Writes the current player's piece buffer to the board centered at `row` and `col`.
-    pub fn place_piece(&mut self, adj_row: isize, adj_col: isize) {
+    /// Writes the current player's piece buffer using `corner` as a basis.
+    /// If you currently have the center of the piece, be sure to adjust it using
+    /// `check_bounds_and_recenter` first!
+    pub fn place_piece(&mut self, corner: IVec2) {
+        let IVec2 {
+            x: adj_col,
+            y: adj_row,
+        } = corner;
         debug::print_board(&self.board);
         debug_assert!(!self.players.is_empty());
         let player = &mut self.players[self.current_player];
         for (dr, r) in self.piece_buffer.iter().enumerate() {
             for dc in r.iter_ones() {
                 // Sometimes I wish Rust allowed signed indices.
-                let r_ind = (adj_row + dr as isize) as usize;
-                let c_ind = (adj_col + dc as isize) as usize;
+                let r_ind = (adj_row + dr as i32) as usize;
+                let c_ind = (adj_col + dc as i32) as usize;
                 self.board[r_ind + 1][c_ind + 1] = player.color;
             }
         }
@@ -205,21 +210,26 @@ impl GameState {
         self.pass_counter = 0;
     }
 
-    /// Determines if the current move is valid. Accepts a pointer to the full game board
-    /// and the player who wishes to make the move. Assumes the piece will be in bounds.
-    pub fn valid_move(&self, adj_row: isize, adj_col: isize) -> bool {
-        self._valid_move(&self.piece_buffer, adj_row, adj_col)
+    /// Determines if the current move is valid. Requires a pointer to the full game board
+    /// and the player who wishes to make the move (provided by this struct).
+    /// Assumes the piece will be in bounds.
+    pub fn valid_move(&self, corner: IVec2) -> bool {
+        self._valid_move(&self.piece_buffer, corner)
     }
 
     // For internal use -- needed only because `can_make_move` needs its own piece buffer.
-    fn _valid_move(&self, piece_buffer: &piece::Shape, adj_row: isize, adj_col: isize) -> bool {
+    fn _valid_move(&self, piece_buffer: &piece::Shape, corner: IVec2) -> bool {
+        let IVec2 {
+            x: adj_col,
+            y: adj_row,
+        } = corner;
         let player = &self.players[self.current_player];
         let mut any_diagonal_matches = false;
 
         for (r_ind, row) in piece_buffer.iter().enumerate() {
             for tile in row.iter_ones() {
-                let r_coord = adj_row + r_ind as isize;
-                let c_coord = adj_col + tile as isize;
+                let r_coord = adj_row + r_ind as i32;
+                let c_coord = adj_col + tile as i32;
 
                 // The board must have space for all tiles that comprise the piece.
                 if self.board[r_coord as usize][c_coord as usize] != TileColor::Empty {
@@ -287,7 +297,8 @@ impl GameState {
                 piece_buf = piece::flip(piece_buf, FlipDir::Vertical);
                 (0..4).any(|_| {
                     piece_buf = piece::rotate(piece_buf, RotateDir::Right);
-                    (0..20).any(|row| (0..20).any(|col| self._valid_move(&piece_buf, row, col)))
+                    (0..20)
+                        .any(|row| (0..20).any(|col| self._valid_move(&piece_buf, ivec2(col, row))))
                 })
             })
         })
@@ -315,15 +326,14 @@ impl GameState {
 
     #[cfg(test)]
     pub fn try_advance_turn(&mut self, row: usize, col: usize) -> bool {
-        let (adj_row, adj_col) =
-            match self.check_bounds_and_recenter(row as isize, col as isize) {
-                Some(coords) => coords,
-                None => return false,
-            };
+        let corner = match self.check_bounds_and_recenter(ivec2(col as i32, row as i32)) {
+            Some(coords) => coords,
+            None => return false,
+        };
 
-        let place_ok = self.valid_move(adj_row + 1, adj_col + 1);
+        let place_ok = self.valid_move(corner + IVec2::ONE);
         if place_ok {
-            self.place_piece(adj_row, adj_col);
+            self.place_piece(corner);
             self.end_turn();
         }
         place_ok
@@ -352,6 +362,8 @@ mod tests {
 
     #[test]
     fn reject_incorrect_move() {
+        // Can't fit
+
         // Wrong corner
         // Adjacent, same color
         // Middle of nowhere

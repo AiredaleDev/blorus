@@ -4,7 +4,8 @@ const ROW_LEN: usize = 5;
 
 // I considered doing BitArr!(for ROW_LEN * ROW_LEN, in u32)
 // but the bitslice API kept asserting I was trying to assign to [()]
-// for reasons I could not understand.
+// for reasons I could not understand. More padding than I'd like but
+// it might not have been worth it anyway for the programming pain.
 pub type Shape = [BitArr!(for ROW_LEN, in u8); 5];
 
 pub const EMPTY_SHAPE: Shape = [bitarr![u8, Lsb0; 0; ROW_LEN]; 5];
