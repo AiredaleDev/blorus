@@ -6,6 +6,10 @@
 use macroquad::{
     audio::{load_sound, play_sound, PlaySoundParams},
     prelude::*,
+    ui::{
+        hash, root_ui,
+        widgets::{Button, Group},
+    },
 };
 use std::env::args;
 
@@ -78,12 +82,18 @@ async fn main() {
             .to_vec();
             game_loop(players).await;
         }
+    } else {
+        setup_screen().await;
     }
 }
 
 /// Local multiplayer setup screen
 async fn setup_screen() {
-    let mut players = Vec::new();
+    fn centered_at(center: Vec2, dims: Vec2) -> Vec2 {
+        center - 0.5 * dims
+    }
+
+    let mut players = Player::default_order(2);
 
     // Change to "while not (exit condition)"
     loop {
@@ -95,11 +105,55 @@ async fn setup_screen() {
         // So this screen just has an "add/remove player" button, a "change color" button for each player,
         // as well as a play/ready button. The UI is almost 100% repurposable for both local and
         // online multiplayer.
-        //
+
         // Forcing people to leave and rejoin to get their desired color is annoying, so there will
         // also be a "swap color" button to offer to switch colors with someone else.
 
+        // How does a "group" work in macroquad UI?
+        // Clearly I can put things into the "root ui"
+        // What does having a "window" do for me besides letting me move and resize it?
+        // I don't want a "window" I want UI elements that have a place on the screen and decide
+        // where they go based on the window's size.
+        // I'll "group" the color select UI elements, they can all share an origin I'll move
+        // somewhere else. Enough bikeshedding, let's go!
 
+        // We ignore the return value of `Group::new` (i.e. `Drag`) because we don't care if the
+        // user is dragging these or not.
+        let color_select_dims = vec2(screen_width() / 16., screen_height() / 8.);
+        let color_select_padding = screen_height() / 32.;
+        let plen_f = players.len() as f32;
+        Group::new(
+            hash!(),
+            vec2(
+                color_select_dims.x * plen_f + color_select_padding * (plen_f + 1.),
+                color_select_dims.y + color_select_padding * 2.,
+            ),
+        )
+        .ui(&mut root_ui(), |ui| {
+            for p in &players {
+                // println!("bruh");
+                // Now, each player gets drawn here.
+            }
+        });
+
+        // We now also place the "Add Player" button below.
+        let player_button_dims = vec2(screen_height() / 4., screen_height() / 16.);
+        let player_button_pos = centered_at(
+            vec2(screen_width() / 2., screen_height() * 0.75),
+            player_button_dims,
+        );
+        let add_player_button = Button::new("Add Player")
+            .position(player_button_pos)
+            .size(player_button_dims);
+        if add_player_button.ui(&mut root_ui()) {
+            // Okay, let's add a player, first color not already in the list.
+            if let Some(color) = TileColor::DEFAULT_ORDER
+                .into_iter()
+                .find(|c| players.iter().all(|p| p.color != *c))
+            {
+                players.push(Player::new(color));
+            }
+        }
 
         next_frame().await;
     }

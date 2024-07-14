@@ -44,6 +44,13 @@ impl Into<Color> for TileColor {
 }
 
 impl TileColor {
+    pub const DEFAULT_ORDER: [Self; 4] = [
+        TileColor::Blue,
+        TileColor::Yellow,
+        TileColor::Red,
+        TileColor::Green,
+    ];
+
     pub fn highlight_color(self) -> Color {
         match self {
             TileColor::Red => color_u8!(0xff, 0x70, 0x70, 0xff),
@@ -69,8 +76,16 @@ impl Player {
     pub fn new(color: TileColor) -> Self {
         Self {
             color,
-            remaining_pieces: BitSet::from_iter(0..=20),
+            remaining_pieces: BitSet::from_iter(0..21),
         }
+    }
+
+    pub fn default_order(player_count: usize) -> Vec<Player> {
+        TileColor::DEFAULT_ORDER
+            .map(Player::new)
+            .into_iter()
+            .take(player_count)
+            .collect()
     }
 }
 
@@ -97,18 +112,7 @@ pub struct GameState {
 impl GameState {
     /// For internal testing only.
     pub fn new(player_count: usize) -> Self {
-        let players: Vec<_> = [
-            TileColor::Blue,
-            TileColor::Yellow,
-            TileColor::Red,
-            TileColor::Green,
-        ]
-        .map(Player::new)
-        .into_iter()
-        .take(player_count)
-        .collect();
-
-        Self::with_players(players)
+        Self::with_players(Player::default_order(player_count))
     }
 
     /// Construct a fresh gamestate with a given set of `players`
