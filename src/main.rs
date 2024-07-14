@@ -108,33 +108,31 @@ async fn setup_screen() {
 
         // Forcing people to leave and rejoin to get their desired color is annoying, so there will
         // also be a "swap color" button to offer to switch colors with someone else.
-
-        // How does a "group" work in macroquad UI?
-        // Clearly I can put things into the "root ui"
-        // What does having a "window" do for me besides letting me move and resize it?
-        // I don't want a "window" I want UI elements that have a place on the screen and decide
-        // where they go based on the window's size.
-        // I'll "group" the color select UI elements, they can all share an origin I'll move
-        // somewhere else. Enough bikeshedding, let's go!
-
-        // We ignore the return value of `Group::new` (i.e. `Drag`) because we don't care if the
-        // user is dragging these or not.
-        let color_select_dims = vec2(screen_width() / 16., screen_height() / 8.);
-        let color_select_padding = screen_height() / 32.;
+        let player_status_dims = vec2(screen_width() / 16., screen_height() / 8.);
+        let player_status_padding = screen_height() / 16.;
         let plen_f = players.len() as f32;
-        Group::new(
-            hash!(),
-            vec2(
-                color_select_dims.x * plen_f + color_select_padding * (plen_f + 1.),
-                color_select_dims.y + color_select_padding * 2.,
-            ),
-        )
-        .ui(&mut root_ui(), |ui| {
-            for p in &players {
-                // println!("bruh");
-                // Now, each player gets drawn here.
-            }
-        });
+
+        let player_status_region_dims = vec2(
+            player_status_dims.x * plen_f + player_status_padding * (plen_f + 1.),
+            player_status_dims.y + player_status_padding * 2.,
+        );
+        let player_status_region_pos = centered_at(
+            vec2(screen_width() / 2., screen_height() / 2.),
+            player_status_region_dims,
+        );
+        for (i, p) in players.iter().enumerate() {
+            let elem_x = player_status_dims.x * i as f32 + player_status_padding * (i + 1) as f32;
+            // Now, each player gets drawn here.
+            let player_repr = piece::SHAPES[16 + i];
+            // Right, this thing doesn't have any knowledge of "group relative coordinates"
+            draw_piece(
+                player_repr,
+                p.color,
+                player_status_region_pos + vec2(elem_x, 0.),
+                0.15 * player_status_region_dims.y,
+                true,
+            );
+        }
 
         // We now also place the "Add Player" button below.
         let player_button_dims = vec2(screen_height() / 4., screen_height() / 16.);
@@ -147,11 +145,13 @@ async fn setup_screen() {
             .size(player_button_dims);
         if add_player_button.ui(&mut root_ui()) {
             // Okay, let's add a player, first color not already in the list.
-            if let Some(color) = TileColor::DEFAULT_ORDER
-                .into_iter()
-                .find(|c| players.iter().all(|p| p.color != *c))
-            {
-                players.push(Player::new(color));
+            if players.len() < 4 {
+                if let Some(color) = TileColor::DEFAULT_ORDER
+                    .into_iter()
+                    .find(|c| players.iter().all(|p| p.color != *c))
+                {
+                    players.push(Player::new(color));
+                }
             }
         }
 
@@ -333,46 +333,35 @@ fn draw_game_screen(
     }
 
     let player = &game_state.players[game_state.current_player];
+    let piece_left = 0.05 * screen_width();
+    let piece_top = 0.35 * screen_height();
     if game_state.selected_piece.is_some() {
         // piece preview border
         draw_rectangle(
-            0.05 * screen_width() - tile_size,
-            0.35 * screen_height() - tile_size,
+            piece_left - tile_size,
+            piece_top - tile_size,
             7. * tile_size,
             7. * tile_size,
             GRAY,
         );
 
         draw_rectangle_lines(
-            0.05 * screen_width() - tile_size,
-            0.35 * screen_height() - tile_size,
+            piece_left - tile_size,
+            piece_top - tile_size,
             7. * tile_size,
             7. * tile_size,
             4.,
             BLACK,
         );
 
-        // piece preview
-        for (r_ind, row) in game_state.piece_buffer.iter().enumerate() {
-            for tile in row.iter_ones() {
-                draw_rectangle(
-                    tile as f32 * tile_size + 0.05 * screen_width(),
-                    r_ind as f32 * tile_size + 0.35 * screen_height(),
-                    tile_size,
-                    tile_size,
-                    player.color.into(),
-                );
-
-                draw_rectangle_lines(
-                    tile as f32 * tile_size + 0.05 * screen_width(),
-                    r_ind as f32 * tile_size + 0.35 * screen_height(),
-                    tile_size,
-                    tile_size,
-                    2.,
-                    BLACK,
-                );
-            }
-        }
+        // Piece preview
+        draw_piece(
+            game_state.piece_buffer,
+            player.color,
+            vec2(piece_left, piece_top),
+            tile_size,
+            true,
+        );
     }
 
     // making the "executive" decision not to use the ui library (at least not for this)
@@ -524,5 +513,31 @@ fn update_suggestion(game_state: &GameState, proposed: IVec2) -> Option<IVec2> {
         }
     } else {
         None
+    }
+}
+
+fn draw_piece(shape: piece::Shape, color: TileColor, at: Vec2, tile_size: f32, with_borders: bool) {
+    // piece preview
+    for (r_ind, row) in shape.iter().enumerate() {
+        for tile in row.iter_ones() {
+            draw_rectangle(
+                tile as f32 * tile_size + at.x,
+                r_ind as f32 * tile_size + at.y,
+                tile_size,
+                tile_size,
+                color.into(),
+            );
+
+            if with_borders {
+                draw_rectangle_lines(
+                    tile as f32 * tile_size + at.x,
+                    r_ind as f32 * tile_size + at.y,
+                    tile_size,
+                    tile_size,
+                    2.,
+                    BLACK,
+                );
+            }
+        }
     }
 }
