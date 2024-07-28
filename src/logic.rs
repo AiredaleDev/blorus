@@ -1,5 +1,6 @@
 use bit_set::BitSet;
 use macroquad::prelude::*;
+use smallvec::SmallVec;
 
 use crate::{debug, piece};
 
@@ -80,7 +81,7 @@ impl Player {
         }
     }
 
-    pub fn default_order(player_count: usize) -> Vec<Player> {
+    pub fn default_order(player_count: usize) -> SmallVec<[Player; 4]> {
         TileColor::DEFAULT_ORDER
             .map(Player::new)
             .into_iter()
@@ -97,7 +98,7 @@ pub struct GameState {
     /// The current state of the board.
     pub board: [[TileColor; 22]; 22],
     /// Player data.
-    pub players: Vec<Player>,
+    pub players: SmallVec<[Player; 4]>,
     /// Points to player whose turn it is.
     /// `0 <= current_player <= 3`
     pub current_player: usize,
@@ -116,7 +117,7 @@ impl GameState {
     }
 
     /// Construct a fresh gamestate with a given set of `players`
-    pub fn with_players(players: Vec<Player>) -> Self {
+    pub fn with_players(players: SmallVec<[Player; 4]>) -> Self {
         assert!(players.len() <= 4, "Only up to four players are supported!");
         let mut board = [[TileColor::default(); 22]; 22];
         board[0] = [TileColor::Wall; 22];

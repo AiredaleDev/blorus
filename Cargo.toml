@@ -9,3 +9,4 @@ edition = "2021"
 bit-set = "0.5.3"
 bitvec = "1.0.1"
 macroquad = "0.3.23"
+smallvec = { version = "1.13.2", features = ["const_new", "const_generics"] }

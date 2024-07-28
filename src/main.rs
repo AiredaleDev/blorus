@@ -6,11 +6,9 @@
 use macroquad::{
     audio::{load_sound, play_sound, PlaySoundParams},
     prelude::*,
-    ui::{
-        hash, root_ui,
-        widgets::{Button, Group},
-    },
+    ui::{root_ui, widgets::Button},
 };
+use smallvec::{SmallVec, ToSmallVec};
 use std::env::args;
 
 mod debug;
@@ -72,15 +70,8 @@ async fn main() {
     // Anyway, I left this branch in so I could still play the game quickly.
     if let Some(demo_flag) = args.next() {
         if demo_flag == "demo" {
-            let players = [
-                TileColor::Blue,
-                TileColor::Yellow,
-                TileColor::Red,
-                TileColor::Green,
-            ]
-            .map(Player::new)
-            .to_vec();
-            game_loop(players).await;
+            let players = TileColor::DEFAULT_ORDER.map(Player::new);
+            game_loop(players.into()).await;
         }
     } else {
         setup_screen().await;
@@ -89,14 +80,11 @@ async fn main() {
 
 /// Local multiplayer setup screen
 async fn setup_screen() {
-    fn centered_at(center: Vec2, dims: Vec2) -> Vec2 {
-        center - 0.5 * dims
-    }
-
     let mut players = Player::default_order(2);
-
     // Change to "while not (exit condition)"
     loop {
+        let mut dropped_players = SmallVec::<[usize; 4]>::new();
+
         clear_background(BEIGE);
         // You know, maybe it would be fun for networked multiplayer to let you fidget
         // with the piece that represents you and have it display to everyone in the lobby.
@@ -120,27 +108,41 @@ async fn setup_screen() {
             vec2(screen_width() / 2., screen_height() / 2.),
             player_status_region_dims,
         );
+        let tile_size = 0.1 * player_status_region_dims.y;
         for (i, p) in players.iter().enumerate() {
             let elem_x = player_status_dims.x * i as f32 + player_status_padding * (i + 1) as f32;
             // Now, each player gets drawn here.
-            let player_repr = piece::SHAPES[16 + i];
-            // Right, this thing doesn't have any knowledge of "group relative coordinates"
+            let player_repr = piece::SHAPES[17 + i];
             draw_piece(
                 player_repr,
                 p.color,
                 player_status_region_pos + vec2(elem_x, 0.),
-                0.15 * player_status_region_dims.y,
+                tile_size,
                 true,
             );
+
+            // Under each player there will be a "drop",
+            // "change color", and "swap color" button.
+            let drop_button = Button::new("Drop out")
+                .position(player_status_region_pos + vec2(elem_x, 5. * tile_size));
+            if drop_button.ui(&mut root_ui()) {
+                dropped_players.push(i);
+            }
+        }
+
+        // We defer dropping the players until now since Rust understandably
+        // diallows modifying a collection while iterating it.
+        for p_ind in dropped_players {
+            players.remove(p_ind);
         }
 
         // We now also place the "Add Player" button below.
-        let player_button_dims = vec2(screen_height() / 4., screen_height() / 16.);
+        let player_button_dims = medium_ui_button_dims();
         let player_button_pos = centered_at(
             vec2(screen_width() / 2., screen_height() * 0.75),
             player_button_dims,
         );
-        let add_player_button = Button::new("Add Player")
+        let add_player_button = Button::new("Add player")
             .position(player_button_pos)
             .size(player_button_dims);
         if add_player_button.ui(&mut root_ui()) {
@@ -155,11 +157,24 @@ async fn setup_screen() {
             }
         }
 
+        let start_game_button = Button::new("Begin!")
+            .position(
+                player_button_pos
+                    + vec2(0., 1. / 16. * screen_height() + medium_ui_button_padding()),
+            )
+            .size(player_button_dims);
+        if start_game_button.ui(&mut root_ui()) {
+            // Player data is just two integers, pretty cheap to copy.
+            // I wonder why BitSets do not implement `Copy`. They should just be
+            // integers, unlike BitVecs which have a notion of "push/pop".
+            game_loop(players.clone()).await;
+        }
+
         next_frame().await;
     }
 }
 
-async fn game_loop(players: Vec<Player>) {
+async fn game_loop(players: SmallVec<[Player; 4]>) {
     let mut game_state = GameState::with_players(players);
     // TODO: Put this somewhere more sane -- it now has the final say on whether or not the player
     // is making a valid move!
@@ -218,6 +233,11 @@ async fn game_loop(players: Vec<Player>) {
 
     // Game over screen
     loop {
+        let play_again_dims = medium_ui_button_dims();
+        let play_again_pos = centered_at(
+            vec2(screen_width() / 2., 0.75 * screen_height()),
+            play_again_dims,
+        );
         let draw_params = DrawTextureParams {
             dest_size: Some(Vec2::new(screen_width(), screen_height())),
             ..Default::default()
@@ -231,7 +251,15 @@ async fn game_loop(players: Vec<Player>) {
             72.,
             winning_player.color.into(),
         );
-        // TODO: *return* from this function instead so you can start a new lobby.
+
+        let play_again_button = Button::new("Return to lobby")
+            .position(play_again_pos)
+            .size(play_again_dims);
+
+        if play_again_button.ui(&mut root_ui()) {
+            break;
+        }
+
         next_frame().await;
     }
 }
@@ -502,6 +530,21 @@ fn handle_input(
     }
 }
 
+/// Given the center position and size of a UI element, return the position
+/// of its topleft corner.
+fn centered_at(center: Vec2, dims: Vec2) -> Vec2 {
+    center - 0.5 * dims
+}
+
+fn medium_ui_button_dims() -> Vec2 {
+    vec2(screen_height() / 4., screen_height() / 16.)
+}
+
+fn medium_ui_button_padding() -> f32 {
+    1. / 64. * screen_height()
+}
+
+/// Updates the coordinates for the potential next move.
 fn update_suggestion(game_state: &GameState, proposed: IVec2) -> Option<IVec2> {
     if let Some(corner) = game_state.check_bounds_and_recenter(proposed) {
         // Why did I need to do "+1" here?
